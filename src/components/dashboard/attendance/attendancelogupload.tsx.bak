@@ -1,0 +1,179 @@
+import { useState } from 'react';
+import { supabase } from '../../../lib/supabase';
+
+type AttendanceInput = {
+  employee_code: string;
+  date: string;
+  clock_in: string;
+  clock_out: string;
+  status: 'Present' | 'Absent' | 'Late' | 'Half Day';
+};
+
+export default function AttendanceInputPage() {
+  const [records, setRecords] = useState<AttendanceInput[]>([
+    { employee_code: '', date: '', clock_in: '', clock_out: '', status: 'Present' },
+  ]);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleChange = (index: number, field: keyof AttendanceInput, value: string) => {
+    const newRecords = [...records];
+    newRecords[index][field] = value;
+    setRecords(newRecords);
+  };
+
+  const addRow = () => {
+    setRecords([...records, { employee_code: '', date: '', clock_in: '', clock_out: '', status: 'Present' }]);
+  };
+
+  const removeRow = (index: number) => {
+    const newRecords = [...records];
+    newRecords.splice(index, 1);
+    setRecords(newRecords);
+  };
+
+  const handleSubmit = async () => {
+    setError('');
+    setUploading(true);
+
+    try {
+      for (const record of records) {
+        if (!record.employee_code || !record.date) continue;
+
+        // Get employee ID
+        const { data: employeeData, error: empError } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('employee_code', record.employee_code)
+          .single();
+
+        if (empError || !employeeData) {
+          console.warn(`Employee not found: ${record.employee_code}`);
+          continue;
+        }
+
+        // Insert attendance log
+        const { error: insertError } = await supabase.from('attendance_logs').insert([
+          {
+            employee_id: employeeData.id,
+            date: record.date,
+            clock_in: record.clock_in || null,
+            clock_out: record.clock_out || null,
+            status: record.status,
+          },
+        ]);
+
+        if (insertError) console.error('Failed to insert:', insertError);
+      }
+
+      alert('Attendance uploaded successfully!');
+      setRecords([{ employee_code: '', date: '', clock_in: '', clock_out: '', status: 'Present' }]);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to upload attendance');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 w-full bg-gray-50 min-h-screen">
+      <div className="max-w-5xl mx-auto">
+        <h1 className="text-2xl font-semibold mb-4">Manual Attendance Entry</h1>
+        <p className="text-gray-600 mb-6">Enter employee attendance records manually.</p>
+
+        <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-200">
+          <table className="w-full min-w-max">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">Employee Code</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">Date</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">Clock In</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">Clock Out</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">Status</th>
+                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {records.map((record, idx) => (
+                <tr key={idx}>
+                  <td className="px-4 py-2">
+                    <input
+                      type="text"
+                      value={record.employee_code}
+                      onChange={(e) => handleChange(idx, 'employee_code', e.target.value)}
+                      placeholder="E123"
+                      className="w-full px-2 py-1 border rounded-lg"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="date"
+                      value={record.date}
+                      onChange={(e) => handleChange(idx, 'date', e.target.value)}
+                      className="w-full px-2 py-1 border rounded-lg"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="time"
+                      value={record.clock_in}
+                      onChange={(e) => handleChange(idx, 'clock_in', e.target.value)}
+                      className="w-full px-2 py-1 border rounded-lg"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="time"
+                      value={record.clock_out}
+                      onChange={(e) => handleChange(idx, 'clock_out', e.target.value)}
+                      className="w-full px-2 py-1 border rounded-lg"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <select
+                      value={record.status}
+                      onChange={(e) => handleChange(idx, 'status', e.target.value)}
+                      className="w-full px-2 py-1 border rounded-lg"
+                    >
+                      <option value="Present">Present</option>
+                      <option value="Absent">Absent</option>
+                      <option value="Late">Late</option>
+                      <option value="Half Day">Half Day</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => removeRow(idx)}
+                      className="text-red-600 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex gap-4 mt-4">
+          <button
+            onClick={addRow}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+          >
+            Add Row
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={uploading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+          >
+            {uploading ? 'Uploading...' : 'Submit Attendance'}
+          </button>
+        </div>
+
+        {error && <p className="text-red-600 mt-4">{error}</p>}
+      </div>
+    </div>
+  );
+}
