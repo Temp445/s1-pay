@@ -26,6 +26,7 @@ export interface Role {
 interface RolesStore extends StoreState<Role> {
   fetchRoles: () => Promise<void>;
   createRole: (name: string) => Promise<Role>;
+  updateRole: (id: string, name: string) => Promise<Role>;
   deleteRole: (id: string) => Promise<void>;
   getRoleById: (id: string) => Role | undefined;
   reset: () => void;
@@ -99,6 +100,54 @@ export const useRolesStore = create<RolesStore>()(
           throw error;
         }
       },
+
+      updateRole: async (id, name) => {
+        const auth = await validateAuth();
+        if (!auth.isAuthenticated) throw createAuthError();
+        if (!auth.tenantId) throw createTenantError();
+
+        set(state => setLoading(state));
+
+        try {
+          const { data, error } = await supabase
+            .from('roles')
+            .update({
+              name,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', id)
+            .eq('tenant_id', auth.tenantId)
+            .select()
+            .single();
+
+          if (error) {
+            if (error.code === '23505') {
+              throw new Error('A role with this name already exists');
+            }
+            throw error;
+          }
+
+          // update local store
+          set(state => ({
+            ...state,
+            items: state.items.map(role =>
+              role.id === id ? data : role
+            ),
+            loading: false,
+            error: null,
+          }));
+
+          return data;
+        } catch (error) {
+          const msg =
+            error instanceof Error
+              ? error.message
+              : 'Failed to update role';
+          set(state => setError(state, msg));
+          throw error;
+        }
+      },
+
 
       deleteRole: async (id) => {
         const auth = await validateAuth();

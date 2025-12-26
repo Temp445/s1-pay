@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus } from 'lucide-react';
+import { X, Plus, Pencil } from 'lucide-react';
 import { useEmployeesStore } from '../../../stores/employeesStore';
 import { useDepartmentsStore, type Department } from '../../../stores/departmentsStore';
 import { useRolesStore, type Role } from '../../../stores/rolesStore';
@@ -21,13 +21,18 @@ export default function AddEmployeeModal({
   const [isNewDepartment, setIsNewDepartment] = useState(false);
   const [isNewRole, setIsNewRole] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState('');
+  const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
+  const [editedDepartmentName, setEditedDepartmentName] = useState('');
+
   const [newRoleName, setNewRoleName] = useState('');
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [editedRoleName, setEditedRoleName] = useState('');
   const [isValidatingEmail, setIsValidatingEmail] = useState(false);
   const { user } = useAuth();
 
   const { createEmployee } = useEmployeesStore();
-  const { items: departments, fetchDepartments, createDepartment } = useDepartmentsStore();
-  const { items: roles, fetchRoles, createRole } = useRolesStore();
+  const { items: departments, fetchDepartments, createDepartment, updateDepartment } = useDepartmentsStore();
+  const { items: roles, fetchRoles, createRole, updateRole } = useRolesStore();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -63,6 +68,29 @@ export default function AddEmployeeModal({
       setLoading(false);
     }
   };
+
+  const handleUpdateDepartment = async () => {
+  if (!editingDepartment) return;
+
+  try {
+    setLoading(true);
+    const updated = await updateDepartment(
+      editingDepartment.id,
+      editedDepartmentName
+    );
+
+    setFormData({ ...formData, department: updated.name });
+    setEditingDepartment(null);
+    setEditedDepartmentName('');
+  } catch (err) {
+    setError(
+      err instanceof Error ? err.message : 'Failed to update department'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleCreateRole = async () => {
     try {
@@ -269,43 +297,89 @@ export default function AddEmployeeModal({
                   />
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="department"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Department
-                  </label>
-                  {!isNewDepartment ? (
-                    <div className="mt-1 relative">
-                      <select
-                        id="department"
-                        name="department"
-                        required
-                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                        value={formData.department}
-                        onChange={(e) => {
-                          if (e.target.value === 'new') {
-                            setIsNewDepartment(true);
-                          } else {
-                            setFormData({
-                              ...formData,
-                              department: e.target.value,
-                            });
-                          }
-                        }}
-                      >
-                        <option value="">Select Department</option>
-                        {departments.map((dept) => (
-                          <option key={dept.id} value={dept.name}>
-                            {dept.name}
-                          </option>
-                        ))}
-                        <option value="new">+ Create New Department</option>
-                      </select>
-                    </div>
-                  ) : (
-                    <div className="mt-1 flex gap-2">
+<div>
+  <label className="block text-sm font-medium text-gray-700">
+    Department
+  </label>
+
+  {/* EDIT MODE */}
+  {editingDepartment ? (
+    <div className="mt-1 flex gap-2">
+      <input
+        type="text"
+        className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        value={editedDepartmentName}
+        onChange={(e) => setEditedDepartmentName(e.target.value)}
+      />
+
+      <button
+        type="button"
+        onClick={handleUpdateDepartment}
+        disabled={!editedDepartmentName.trim() || loading}
+        className="inline-flex items-center px-3 py-2 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+      >
+        Save
+      </button>
+
+      <button
+        type="button"
+        onClick={() => {
+          setEditingDepartment(null);
+          setEditedDepartmentName('');
+        }}
+        className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+      >
+        Cancel
+      </button>
+    </div>
+  ) : !isNewDepartment ? (
+    <div className="mt-1 flex gap-2">
+      {/* DROPDOWN */}
+      <select
+        required
+        className="block w-full rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        value={formData.department}
+        onChange={(e) => {
+          if (e.target.value === 'new') {
+            setIsNewDepartment(true);
+          } else {
+            setFormData({
+              ...formData,
+              department: e.target.value,
+            });
+          }
+        }}
+      >
+        <option value="">Select Department</option>
+        {departments.map((dept) => (
+          <option key={dept.id} value={dept.name}>
+            {dept.name}
+          </option>
+        ))}
+        <option value="new">+ Create New Department</option>
+      </select>
+
+      {/* EDIT BUTTON AT END */}
+      {formData.department && (
+        <button
+          type="button"
+          onClick={() => {
+            const dept = departments.find(
+              (d) => d.name === formData.department
+            );
+            if (!dept) return;
+            setEditingDepartment(dept);
+            setEditedDepartmentName(dept.name);
+          }}
+          className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 text-gray-600 hover:text-indigo-600 hover:border-indigo-600"
+          title="Edit Department"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  ) : (
+    <div className="mt-1 flex gap-2">
                       <input
                         type="text"
                         className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
@@ -333,72 +407,132 @@ export default function AddEmployeeModal({
                         Cancel
                       </button>
                     </div>
-                  )}
-                </div>
+  )}
+</div>
+
+
 
                 <div>
-                  <label
-                    htmlFor="role"
-                    className="block text-sm font-medium text-gray-700"
-                  >
-                    Role
-                  </label>
-                  {!isNewRole ? (
-                    <div className="mt-1 relative">
-                      <select
-                        id="role"
-                        name="role"
-                        required
-                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                        value={formData.role}
-                        onChange={(e) => {
-                          if (e.target.value === 'new') {
-                            setIsNewRole(true);
-                          } else {
-                            setFormData({ ...formData, role: e.target.value });
-                          }
-                        }}
-                      >
-                        <option value="">Select Role</option>
-                        {roles.map((role) => (
-                          <option key={role.id} value={role.name}>
-                            {role.name}
-                          </option>
-                        ))}
-                        <option value="new">+ Create New Role</option>
-                      </select>
-                    </div>
-                  ) : (
-                    <div className="mt-1 flex gap-2">
-                      <input
-                        type="text"
-                        className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        placeholder="Enter new role name"
-                        value={newRoleName}
-                        onChange={(e) => setNewRoleName(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleCreateRole}
-                        disabled={!newRoleName.trim() || loading}
-                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsNewRole(false);
-                          setNewRoleName('');
-                        }}
-                        className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                </div>
+  <label
+    htmlFor="role"
+    className="block text-sm font-medium text-gray-700"
+  >
+    Role
+  </label>
+
+  {/* EDIT MODE */}
+  {editingRole ? (
+    <div className="mt-1 flex gap-2">
+      <input
+        type="text"
+        className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        value={editedRoleName}
+        onChange={(e) => setEditedRoleName(e.target.value)}
+      />
+
+      <button
+        type="button"
+        onClick={async () => {
+          await updateRole(editingRole.id, editedRoleName);
+          setFormData({ ...formData, role: editedRoleName });
+          setEditingRole(null);
+          setEditedRoleName('');
+        }}
+        disabled={!editedRoleName.trim() || loading}
+        className="inline-flex items-center px-3 py-2 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+      >
+        Save
+      </button>
+
+      <button
+        type="button"
+        onClick={() => {
+          setEditingRole(null);
+          setEditedRoleName('');
+        }}
+        className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+      >
+        Cancel
+      </button>
+    </div>
+  ) : !isNewRole ? (
+    <div className="mt-1 flex gap-2">
+      {/* DROPDOWN */}
+      <select
+        id="role"
+        name="role"
+        required
+        className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+        value={formData.role}
+        onChange={(e) => {
+          if (e.target.value === 'new') {
+            setIsNewRole(true);
+          } else {
+            setFormData({ ...formData, role: e.target.value });
+          }
+        }}
+      >
+        <option value="">Select Role</option>
+        {roles.map((role) => (
+          <option key={role.id} value={role.name}>
+            {role.name}
+          </option>
+        ))}
+        <option value="new">+ Create New Role</option>
+      </select>
+
+      {/* EDIT ICON */}
+      {formData.role && (
+        <button
+          type="button"
+          onClick={() => {
+            const role = roles.find(
+              (r) => r.name === formData.role
+            );
+            if (!role) return;
+            setEditingRole(role);
+            setEditedRoleName(role.name);
+          }}
+          className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 text-gray-600 hover:text-indigo-600 hover:border-indigo-600"
+          title="Edit Role"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  ) : (
+    /* EXISTING CREATE ROLE UI – UNCHANGED */
+    <div className="mt-1 flex gap-2">
+      <input
+        type="text"
+        className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        placeholder="Enter new role name"
+        value={newRoleName}
+        onChange={(e) => setNewRoleName(e.target.value)}
+      />
+      <button
+        type="button"
+        onClick={handleCreateRole}
+        disabled={!newRoleName.trim() || loading}
+        className="inline-flex items-center px-3 py-2 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+      >
+        <Plus className="h-4 w-4 mr-1" />
+        Add
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setIsNewRole(false);
+          setNewRoleName('');
+        }}
+        className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+      >
+        Cancel
+      </button>
+    </div>
+  )}
+</div>
+
 
                 <div>
                   <label

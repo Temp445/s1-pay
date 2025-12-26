@@ -26,6 +26,7 @@ export interface Department {
 interface DepartmentsStore extends StoreState<Department> {
   fetchDepartments: () => Promise<void>;
   createDepartment: (name: string) => Promise<Department>;
+  updateDepartment: (id: string, name: string) => Promise<Department>;
   deleteDepartment: (id: string) => Promise<void>;
   getDepartmentById: (id: string) => Department | undefined;
   reset: () => void;
@@ -99,6 +100,54 @@ export const useDepartmentsStore = create<DepartmentsStore>()(
           throw error;
         }
       },
+
+      updateDepartment: async (id, name) => {
+        const auth = await validateAuth();
+        if (!auth.isAuthenticated) throw createAuthError();
+        if (!auth.tenantId) throw createTenantError();
+
+        set(state => setLoading(state));
+
+        try {
+          const { data, error } = await supabase
+            .from('departments')
+            .update({
+              name,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', id)
+            .eq('tenant_id', auth.tenantId)
+            .select()
+            .single();
+
+          if (error) {
+            if (error.code === '23505') {
+              throw new Error('A department with this name already exists');
+            }
+            throw error;
+          }
+
+          // update local store
+          set(state => ({
+            ...state,
+            items: state.items.map(dept =>
+              dept.id === id ? data : dept
+            ),
+            loading: false,
+            error: null,
+          }));
+
+          return data;
+        } catch (error) {
+          const msg =
+            error instanceof Error
+              ? error.message
+              : 'Failed to update department';
+          set(state => setError(state, msg));
+          throw error;
+        }
+      },
+
 
       deleteDepartment: async (id) => {
         const auth = await validateAuth();
