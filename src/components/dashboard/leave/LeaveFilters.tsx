@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useLeaveStore } from '../../../stores/leaveStore';
 
 interface LeaveFiltersProps {
@@ -13,10 +13,32 @@ interface LeaveFiltersProps {
 
 const statuses = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
 
+// Helper function to format date as yyyy-mm-dd in local time
+function formatDateLocal(date: Date) {
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, '0'); // months are 0-indexed
+  const d = date.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export default function LeaveFilters({ filters, onFilterChange }: LeaveFiltersProps) {
   const { leaveTypes, fetchLeaveTypes } = useLeaveStore();
   const leaveTypesData = leaveTypes.items || [];
   const loading = leaveTypes.loading;
+
+  // Set default start and end dates if not provided
+  useEffect(() => {
+    const today = new Date();
+    const firstDayPrevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+
+    if (!filters.start_date || !filters.end_date) {
+      onFilterChange({
+        ...filters,
+        start_date: filters.start_date || formatDateLocal(firstDayPrevMonth),
+        end_date: filters.end_date || formatDateLocal(today),
+      });
+    }
+  }, [filters.start_date, filters.end_date, onFilterChange]);
 
   useEffect(() => {
     fetchLeaveTypes();

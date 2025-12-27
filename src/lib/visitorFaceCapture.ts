@@ -28,12 +28,14 @@ export async function handleUnverifiedVisitor(params: {
   const { video, lastDescriptorRef, facePresentRef } = params;
 
   /* ---------- DETECT FACE ---------- */
+  // We keep the threshold low here to detect *movement*, 
+  // but we will filter for *quality* below.
   const detection = await faceapi
     .detectSingleFace(
       video,
       new faceapi.TinyFaceDetectorOptions({
         inputSize: 224,
-        scoreThreshold: 0.5,
+        scoreThreshold: 0.5, 
       })
     )
     .withFaceLandmarks()
@@ -43,6 +45,36 @@ export async function handleUnverifiedVisitor(params: {
     return { success: false };
   }
 
+  /* ---------- QUALITY CHECK (PROPER VIEW) ---------- */
+  // 1. Extract dimensions
+  const { box, score } = detection.detection;
+  const { videoWidth, videoHeight } = video;
+
+  // 2. Strict Confidence Check: 
+  // 0.5 detects a face, but 0.85 ensures they are facing the camera and not blurry.
+  if (score < 0.85) {
+    return { success: false };
+  }
+
+  // 3. Face Size Check:
+  // Face must be at least 15% of the screen width (prevents background captures).
+  const minFaceWidth = videoWidth * 0.15;
+  if (box.width < minFaceWidth) {
+    return { success: false };
+  }
+
+  // 4. Centering Check:
+  // Face center X should be within the middle 60% of the screen.
+  const faceCenterX = box.x + box.width / 2;
+  const screenCenterX = videoWidth / 2;
+  const allowedOffset = videoWidth * 0.3; // Allow 30% deviation left/right
+
+  if (Math.abs(faceCenterX - screenCenterX) > allowedOffset) {
+    return { success: false };
+  }
+
+  /* ---------- PROCESS VALID FACE ---------- */
+  
   const descriptor = Array.from(detection.descriptor);
 
   /* ---------- SAME FACE STILL PRESENT ---------- */

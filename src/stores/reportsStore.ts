@@ -30,6 +30,12 @@ import type {
   DepartmentReport,
 } from '../lib/reports';
 
+
+const removeEmployeeIdColumn = (data: any[]) => {
+  return data.map(({ employeeId, ...rest }) => rest);
+};
+
+
 interface ReportData {
   data: any[];
   summary?: Record<string, any>;
@@ -102,7 +108,7 @@ export const useReportsStore = create<ReportsStore>()(
           set(state => ({
             employeeMasterReports: {
               ...state.employeeMasterReports,
-              [subtype]: { data, summary: {} }
+             [subtype]: { data: removeEmployeeIdColumn(data), summary: {} } 
             },
             loading: false,
             error: null
@@ -450,7 +456,7 @@ export const useReportsStore = create<ReportsStore>()(
           set(state => ({
             transactionReports: {
               ...state.transactionReports,
-              [subtype]: { data, summary }
+              [subtype]: { data: removeEmployeeIdColumn(data), summary: {} } 
             },
             loading: false,
             error: null
@@ -831,7 +837,7 @@ export const useReportsStore = create<ReportsStore>()(
           set(state => ({
             statutoryReports: {
               ...state.statutoryReports,
-              [subtype]: { data, summary }
+              [subtype]: { data: removeEmployeeIdColumn(data), summary: {} } 
             },
             loading: false,
             error: null

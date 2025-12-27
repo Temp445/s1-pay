@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
-import type { Employee } from '../../../stores/employeesStore';
-import { useDepartmentsStore } from '../../../stores/departmentsStore';
-import { useRolesStore } from '../../../stores/rolesStore';
+import React, { useState, useEffect } from "react";
+import { X } from "lucide-react";
+import type { Employee } from "../../../stores/employeesStore";
+import { useDepartmentsStore } from "../../../stores/departmentsStore";
+import { useRolesStore } from "../../../stores/rolesStore";
 
 interface EditEmployeeModalProps {
   employee: Employee | null;
@@ -28,33 +28,44 @@ export default function EditEmployeeModal({
     department: string;
     role: string;
     start_date: string;
-    status: 'Active' | 'On Leave' | 'Terminated';
+    status: "Active" | "Terminated" | "Suspended" | "Relieved" | "Rejoin";
     address: string;
     date_of_birth: string;
   }>({
-    name: '',
-    email: '',
-    employee_code: '',
-    department: '',
-    role: '',
-    start_date: '',
-    status: 'Active',
-    address: '',
-    date_of_birth: '',
+    name: "",
+    email: "",
+    employee_code: "",
+    department: "",
+    role: "",
+    start_date: "",
+    status: "Active",
+    address: "",
+    date_of_birth: "",
   });
+
+  const isRejoinSelected = formData.status === "Rejoin";
+
+  useEffect(() => {
+    if (formData.status === "Rejoin") {
+      setFormData((prev) => ({
+        ...prev,
+        start_date: "",
+      }));
+    }
+  }, [formData.status]);
 
   useEffect(() => {
     if (employee) {
       setFormData({
         name: employee.name,
         email: employee.email,
-        employee_code: employee.employee_code || '',
+        employee_code: employee.employee_code || "",
         department: employee.department,
         role: employee.role,
         start_date: employee.start_date,
-        status: employee.status,
-        address: employee.address || '',
-        date_of_birth: employee.date_of_birth || '',
+        status: employee.status === "Rejoin" ? "Active" : employee.status,
+        address: employee.address || "",
+        date_of_birth: employee.date_of_birth || "",
       });
     }
   }, [employee]);
@@ -77,7 +88,7 @@ export default function EditEmployeeModal({
       onClose();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'Failed to update employee'
+        err instanceof Error ? err.message : "Failed to update employee"
       );
     } finally {
       setLoading(false);
@@ -222,7 +233,7 @@ export default function EditEmployeeModal({
                         date_of_birth: e.target.value,
                       })
                     }
-                    max={new Date().toISOString().split('T')[0]} // Prevent future dates
+                    max={new Date().toISOString().split("T")[0]} // Prevent future dates
                   />
                 </div>
 
@@ -283,13 +294,19 @@ export default function EditEmployeeModal({
                     htmlFor="start_date"
                     className="block text-sm font-medium text-gray-700"
                   >
-                    Start Date
+                    {isRejoinSelected ? "Rejoin Date" : "Join Date"}
                   </label>
+
                   <input
                     type="date"
                     name="start_date"
                     id="start_date"
                     required
+                    min={
+                      isRejoinSelected
+                        ? new Date().toISOString().split("T")[0]
+                        : undefined
+                    }
                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     value={formData.start_date}
                     onChange={(e) =>
@@ -305,25 +322,46 @@ export default function EditEmployeeModal({
                   >
                     Status
                   </label>
+
                   <select
                     id="status"
                     name="status"
                     required
                     className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                     value={formData.status}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        status: e.target.value as
-                          | 'Active'
-                          | 'On Leave'
-                          | 'Terminated',
-                      })
-                    }
+                    onChange={(e) => {
+                      const value = e.target.value as
+                        | "Active"
+                        | "Suspended"
+                        | "Relieved"
+                        | "Terminated"
+                        | "Rejoin";
+
+                      setFormData((prev) => ({
+                        ...prev,
+                        status: value,
+                        start_date: value === "Rejoin" ? "" : prev.start_date,
+                      }));
+                    }}
                   >
-                    <option value="Active">Active</option>
-                    <option value="On Leave">On Leave</option>
-                    <option value="Terminated">Terminated</option>
+                    {employee &&
+                    ["Relieved", "Terminated"].includes(employee.status) ? (
+                      <>
+                        {/* Show only the current exiting status */}
+                        <option value={employee.status}>
+                          {employee.status}
+                        </option>
+                        {/* And allow Rejoin */}
+                        <option value="Rejoin">Rejoin</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="Active">Active</option>
+                        <option value="Suspended">Suspended</option>
+                        <option value="Relieved">Relieved</option>
+                        <option value="Terminated">Terminated</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -333,7 +371,7 @@ export default function EditEmployeeModal({
                     disabled={loading}
                     className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                   >
-                    {loading ? 'Saving...' : 'Save Changes'}
+                    {loading ? "Saving..." : "Save Changes"}
                   </button>
                   <button
                     type="button"

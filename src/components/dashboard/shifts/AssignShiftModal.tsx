@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import { format, differenceInDays, parseISO } from 'date-fns'; // Import differenceInDays and parseISO
 import { X, Search, AlertCircle, Calendar, Clock, Users } from 'lucide-react';
 import { useShiftsStore, type Shift, BulkAssignmentRequest } from '../../../stores/shiftsStore';
 import { useEmployeesStore, type Employee } from '../../../stores/employeesStore';
@@ -58,6 +58,42 @@ export default function AssignShiftModal({
 
   const { items: employeesData, fetchEmployees } = useEmployeesStore();
   const { assignments: assignmentsData, fetchShiftAssignments, createBulkAssignments } = useShiftsStore();
+
+  // --- CHANGED LOGIC START ---
+  // Watch for date changes to auto-correct the rotation pattern
+  useEffect(() => {
+    // 1. If no end date, force none
+    if (!formData.endDate) {
+      if (formData.rotationPattern !== 'none') {
+        setFormData(prev => ({ ...prev, rotationPattern: 'none' }));
+      }
+      return;
+    }
+
+    // 2. Calculate difference
+    const start = parseISO(formData.startDate);
+    const end = parseISO(formData.endDate);
+    const diff = differenceInDays(end, start);
+
+    // 3. Auto-downgrade pattern if date range is too short
+    let newPattern = formData.rotationPattern;
+
+    if (diff < 1) {
+      // Same day or invalid range -> None
+      newPattern = 'none';
+    } else if (diff < 7 && (newPattern === 'weekly' || newPattern === 'monthly')) {
+      // Less than a week -> Max allows Daily
+      newPattern = 'daily';
+    } else if (diff < 30 && newPattern === 'monthly') {
+      // Less than a month -> Max allows Weekly
+      newPattern = 'weekly';
+    }
+
+    if (newPattern !== formData.rotationPattern) {
+      setFormData(prev => ({ ...prev, rotationPattern: newPattern }));
+    }
+  }, [formData.startDate, formData.endDate, formData.rotationPattern]);
+  // --- CHANGED LOGIC END ---
 
   useEffect(() => {
     const loadEmployees = async () => {
@@ -125,7 +161,7 @@ export default function AssignShiftModal({
         shift_id: shift.id,
         employee_ids: formData.employeeIds,
         rotation: {
-          type: formData.rotationPattern === 'none' ? 'daily' : formData.rotationPattern,
+          type: formData.endDate ? formData.rotationPattern : 'none',
           interval: formData.rotationPattern === 'weekly' 
             ? formData.rotationWeeks 
             : formData.rotationPattern === 'monthly'
@@ -290,7 +326,13 @@ export default function AssignShiftModal({
                   value={formData.rotationPattern}
                   weekInterval={formData.rotationWeeks}
                   monthInterval={formData.rotationMonths}
+                  startDate={formData.startDate} // Passed start date
+                  endDate={formData.endDate}     // Passed end date
                   onChange={(pattern, interval) => {
+                    // Logic check is now handled by the useEffect above and the Selector display
+                    // but we still block changes if endDate is missing just in case
+                    if (!formData.endDate && pattern !== 'none') return; 
+
                     setFormData({
                       ...formData,
                       rotationPattern: pattern,

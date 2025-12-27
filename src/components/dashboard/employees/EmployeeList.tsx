@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Edit2, Trash2, MoreVertical } from 'lucide-react';
+import React, { useEffect, useState} from 'react';
+import { Edit2, Trash2 } from 'lucide-react';
 import { useEmployeesStore, type Employee } from '../../../stores/employeesStore';
 import EditEmployeeModal from './EditEmployeeModal';
 
@@ -16,8 +16,6 @@ interface EmployeeListProps {
 export default function EmployeeList({ filters, onRefresh, lastRefresh }: EmployeeListProps) {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
-  const [actionMenuEmployee, setActionMenuEmployee] = useState<string | null>(null);
-  const actionMenuRef = useRef<HTMLDivElement>(null);
 
   const { items: employees, loading, error, fetchEmployees, deleteEmployee, updateEmployee } = useEmployeesStore();
 
@@ -25,18 +23,6 @@ export default function EmployeeList({ filters, onRefresh, lastRefresh }: Employ
     fetchEmployees();
   }, [lastRefresh, fetchEmployees]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
-        setActionMenuEmployee(null);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
 
   const handleDelete = async (employeeId: string) => {
     try {
@@ -48,15 +34,6 @@ export default function EmployeeList({ filters, onRefresh, lastRefresh }: Employ
     }
   };
 
-  const handleStatusUpdate = async (employeeId: string, newStatus: string) => {
-    try {
-      await updateEmployee(employeeId, { status: newStatus as 'Active' | 'On Leave' | 'Terminated' });
-      onRefresh();
-      setActionMenuEmployee(null);
-    } catch (err) {
-      console.error('Failed to update employee status:', err);
-    }
-  };
 
   const handleEdit = async (employeeId: string, updates: Partial<Employee>) => {
     try {
@@ -111,7 +88,7 @@ export default function EmployeeList({ filters, onRefresh, lastRefresh }: Employ
                     Status
                   </th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                    Start Date
+                    Join Date
                   </th>
                   <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
                     <span className="sr-only">Actions</span>
@@ -138,15 +115,14 @@ export default function EmployeeList({ filters, onRefresh, lastRefresh }: Employ
                     <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                       <span
                         className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                          employee.status === 'Active'
+                          (employee.status === 'Active' || employee.status === 'Rejoin')
                             ? 'bg-green-100 text-green-800'
-                            : employee.status === 'On Leave'
-                            ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-red-100 text-red-800'
                         }`}
                       >
-                        {employee.status}
+                        {employee.status === 'Rejoin' ? 'Active' : employee.status}
                       </span>
+
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                       {new Date(employee.start_date).toLocaleDateString()}
@@ -169,36 +145,7 @@ export default function EmployeeList({ filters, onRefresh, lastRefresh }: Employ
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
-                        <div className="relative" ref={actionMenuRef}>
-                          <button
-                            type="button"
-                            className="text-gray-400 hover:text-gray-500"
-                            onClick={() => setActionMenuEmployee(actionMenuEmployee === employee.id ? null : employee.id)}
-                            title="More options"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                          
-                          {/* Action Menu Dropdown */}
-                          {actionMenuEmployee === employee.id && (
-                            <div className="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-                              <div className="px-4 py-2 text-xs text-gray-500">Status Update</div>
-                              {['Active', 'On Leave', 'Terminated'].map((status) => (
-                                <button
-                                  key={status}
-                                  className={`block w-full px-4 py-2 text-sm text-left ${
-                                    employee.status === status
-                                      ? 'bg-gray-100 text-gray-900'
-                                      : 'text-gray-700 hover:bg-gray-50'
-                                  }`}
-                                  onClick={() => handleStatusUpdate(employee.id, status)}
-                                >
-                                  {status}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                        
                       </div>
                     </td>
                   </tr>

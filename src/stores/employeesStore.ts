@@ -22,7 +22,7 @@ export interface Employee {
   email: string;
   department: string;
   role: string;
-  status: 'Active' | 'On Leave' | 'Terminated';
+  status: 'Active' | 'Terminated' | 'Suspended' | 'Relieved'| 'Rejoin';
   start_date: string;
   employee_code?: string;
   address?: string;
@@ -138,66 +138,88 @@ export const useEmployeesStore = create<EmployeesStore>()(
       },
 
       updateEmployee: async (id, updates) => {
-        const auth = await validateAuth();
-        if (!auth.isAuthenticated) {
-          throw createAuthError();
-        }
+  const auth = await validateAuth();
+  if (!auth.isAuthenticated) throw createAuthError();
+  if (!auth.tenantId) throw createTenantError();
 
-        if (!auth.tenantId) {
-          throw createTenantError();
-        }
+  set(state => setLoading(state));
 
-        set(state => setLoading(state));
+  try {
+    // 🔹 Fetch current values
+    const { data: currentEmployee, error: fetchError } = await supabase
+      .from('employees')
+      .select('status, start_date')
+      .eq('id', id)
+      .eq('tenant_id', auth.tenantId)
+      .single();
 
-        try {
-          // Check for duplicate email within tenant if email is being updated
-          if (updates.email) {
-            const { data: existingEmployeeWithEmail } = await supabase
-              .from('employees')
-              .select('id')
-              .eq('email', updates.email)
-              .eq('tenant_id', auth.tenantId)
-              .neq('id', id)
-              .maybeSingle();
+    if (fetchError) throw fetchError;
 
-            if (existingEmployeeWithEmail) {
-              throw new Error('An employee with this email already exists in your organization');
-            }
-          }
+    const nextStatus = updates.status ?? currentEmployee.status;
+    const nextStartDate = updates.start_date ?? currentEmployee.start_date;
 
-          // Check for duplicate employee code within tenant if updating
-          if (updates.employee_code) {
-            const { data: existingEmployee } = await supabase
-              .from('employees')
-              .select('id')
-              .eq('employee_code', updates.employee_code)
-              .eq('tenant_id', auth.tenantId)
-              .neq('id', id)
-              .maybeSingle();
+    const isChanged =
+      nextStatus !== currentEmployee.status ||
+      nextStartDate !== currentEmployee.start_date;
 
-            if (existingEmployee) {
-              throw new Error('An employee with this employee code already exists in your organization');
-            }
-          }
+    // 🔹 Store history if ANY change happened
+    if (isChanged) {
+      await supabase.from('employee_status_history').insert({
+        employee_id: id,
+        old_status: currentEmployee.status,
+        new_status: nextStatus,
+        old_start_date: currentEmployee.start_date,
+        new_start_date: nextStartDate,
+        tenant_id: auth.tenantId,
+        updated_by: auth.userId,
+      });
+    }
 
-          const { data, error } = await supabase
-            .from('employees')
-            .update(updates)
-            .eq('id', id)
-            .eq('tenant_id', auth.tenantId)
-            .select()
-            .single();
+    // 🔹 Existing duplicate checks (UNCHANGED)
+    if (updates.email) {
+      const { data } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('email', updates.email)
+        .eq('tenant_id', auth.tenantId)
+        .neq('id', id)
+        .maybeSingle();
 
-          if (error) throw error;
+      if (data) throw new Error('An employee with this email already exists');
+    }
 
-          set(state => updateItem(state, id, data));
-          return data;
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Failed to update employee';
-          set(state => setError(state, errorMessage));
-          throw error;
-        }
-      },
+    if (updates.employee_code) {
+      const { data } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('employee_code', updates.employee_code)
+        .eq('tenant_id', auth.tenantId)
+        .neq('id', id)
+        .maybeSingle();
+
+      if (data) throw new Error('An employee with this employee code already exists');
+    }
+
+    // 🔹 Update employee (UNCHANGED)
+    const { data, error } = await supabase
+      .from('employees')
+      .update(updates)
+      .eq('id', id)
+      .eq('tenant_id', auth.tenantId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    set(state => updateItem(state, id, data));
+    return data;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Failed to update employee';
+    set(state => setError(state, msg));
+    throw error;
+  }
+},
+
 
       deleteEmployee: async (id) => {
         const auth = await validateAuth();

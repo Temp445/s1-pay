@@ -11,6 +11,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'Employees', href: '/dashboard/employees', icon: Users },
   { name: 'Attendance', href: '/dashboard/attendance', icon: Clock },
+  { name: 'Attendance Face', href: '/dashboard/attendance-face-verify', icon: Clock },
   { name: 'Attendance Log', href: '/dashboard/attendance-logs', icon: FileClock },
   { name: 'Visitor Log', href: '/dashboard/visitor-records', icon: ScanFace },
   { name: 'Leave', href: '/dashboard/leave', icon: Calendar },

@@ -50,31 +50,46 @@ export default function ReportTable({ data, columns }: ReportTableProps) {
   );
 
   // Format cell value based on type
-  const formatCellValue = (value: any) => {
-    if (value === null || value === undefined) return '-';
-    
-    if (typeof value === 'boolean') {
-      return value ? 'Yes' : 'No';
+  const formatCellValue = (value: any, column?: string) => {
+  if (value === null || value === undefined) return '-';
+
+  // 🔒 NEVER treat employeeCode as date
+  if (column === 'employeeCode') {
+    return String(value);
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No';
+  }
+
+  if (typeof value === 'number') {
+    if (
+      columns.some(
+        col =>
+          col.toLowerCase().includes('amount') ||
+          col.toLowerCase().includes('salary')
+      )
+    ) {
+      return value.toLocaleString('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        minimumFractionDigits: 2,
+      });
     }
-    
-    if (typeof value === 'number') {
-      // Check if it looks like a currency value
-      if (columns.some(col => col.toLowerCase().includes('amount') || col.toLowerCase().includes('salary'))) {
-        return value.toLocaleString('en-IN', {
-          style: 'currency',
-          currency: 'INR',
-          minimumFractionDigits: 2
-        });
-      }
-      return value.toLocaleString();
-    }
-    
-    if (value instanceof Date || (typeof value === 'string' && !isNaN(Date.parse(value)))) {
-      return new Date(value).toLocaleDateString();
-    }
-    
-    return value;
-  };
+    return value.toLocaleString();
+  }
+
+  // ✅ ONLY real date strings like YYYY-MM-DD
+  if (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}/.test(value)
+  ) {
+    return new Date(value).toLocaleDateString();
+  }
+
+  return String(value);
+};
+
 
   // Format column header for display
   const formatColumnHeader = (column: string) => {
@@ -118,7 +133,7 @@ export default function ReportTable({ data, columns }: ReportTableProps) {
               <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                 {columns.map((column) => (
                   <td key={column} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatCellValue(row[column])}
+                    {formatCellValue(row[column], column)}
                   </td>
                 ))}
               </tr>
