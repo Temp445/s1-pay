@@ -30,6 +30,9 @@ export default function ShiftsPage() {
     status: '',
   });
 
+  const [focusedDate, setFocusedDate] = useState<Date | null>(null);
+
+
   useEffect(() => {
     fetchEmployees();
     fetchShifts();
@@ -39,6 +42,8 @@ export default function ShiftsPage() {
 
   const handleShiftClick = (shift: ShiftAssignmentType) => {
     setSelectedShift(shift);
+    setFocusedDate(new Date(shift.schedule_date));
+
   };
 
   const handleAssignmentUpdate = () => {
@@ -121,23 +126,46 @@ export default function ShiftsPage() {
           />
         </div>
 
-        <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <ShiftCalendar
-              onShiftClick={handleShiftClick}
-              selectedDate={new Date(filters.startDate)}
-            />
-          </div>
-          <div>
-            {selectedShift && (
-              <ShiftAssignment
-                shift={selectedShift}
-                availableEmployees={availableEmployees}
-                onAssignmentUpdate={handleAssignmentUpdate}
-              />
-            )}
-          </div>
-        </div>
+        <div
+  className={`mt-8 grid gap-4 transition-all duration-300 ${
+    selectedShift || focusedDate ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'
+  }`}
+>
+  <div className={selectedShift || focusedDate ? 'lg:col-span-2' : 'lg:col-span-3'}>
+    <ShiftCalendar
+      onShiftClick={handleShiftClick}
+      selectedDate={new Date(filters.startDate)}
+      focusedDate={focusedDate}
+      onClearFocus={() => {
+        setFocusedDate(null);
+        setSelectedShift(null);
+      }}
+    />
+  </div>
+
+  {(selectedShift || focusedDate) && (
+    <div className="transition-all duration-300 space-y-4">
+      {selectedShift ? (
+        <ShiftAssignment
+          shift={selectedShift}
+          availableEmployees={availableEmployees}
+          onAssignmentUpdate={handleAssignmentUpdate}
+        />
+      ) : (
+        // Show all shifts for the focused date
+        shiftsForFocusedDate.map(shift => (
+          <ShiftAssignment
+            key={shift.shift_id}
+            shift={shift}
+            availableEmployees={availableEmployees}
+            onAssignmentUpdate={handleAssignmentUpdate}
+          />
+        ))
+      )}
+    </div>
+  )}
+</div>
+
       </div>
 
       <CreateShiftModal
