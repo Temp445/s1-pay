@@ -208,7 +208,7 @@ export default function ShiftAttendanceSettingsModal({
               )}
 
               <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-                <div className="grid grid-cols-2 gap-4">
+                {/* <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="clockInStartOffset" className="block text-sm font-medium text-gray-700">
                       Clock In Start Offset
@@ -292,7 +292,7 @@ export default function ShiftAttendanceSettingsModal({
                       />
                     </div>
                   </div>
-                </div>
+                </div> */}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>

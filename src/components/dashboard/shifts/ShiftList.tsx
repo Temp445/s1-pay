@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Edit2, Trash2, Users, Settings } from 'lucide-react';
 import { useShiftsStore, type Shift } from '../../../stores/shiftsStore';
 import ShiftAttendanceSettingsModal from './ShiftAttendanceSettingsModal';
+import EditShiftModal from './EditShiftModal';
 
 interface ShiftListProps {
   onRefresh: () => void;
@@ -10,12 +11,13 @@ interface ShiftListProps {
 }
 
 export default function ShiftList({ onRefresh, lastRefresh, onAssignClick }: ShiftListProps) {
-  const {items: shifts , loading, error, fetchShifts } = useShiftsStore();
+  const {items: shifts , loading, error, fetchShifts, deleteShift } = useShiftsStore();
   // const shifts = shiftsState.items || [];
   // const loading = shiftsState.loading;
   // const error = shiftsState.error;
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [editingShift, setEditingShift] = useState<Shift | null>(null);
 
   useEffect(() => {
     fetchShifts();
@@ -33,6 +35,29 @@ export default function ShiftList({ onRefresh, lastRefresh, onAssignClick }: Shi
       </div>
     );
   }
+
+
+  const handleDeleteShift = async (shift: Shift) => {
+  const confirmed = window.confirm(
+    `Are you sure you want to delete the shift "${shift.name}"?`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    await deleteShift(shift.id);
+    await fetchShifts(); // ensure fresh data
+    onRefresh();         // notify parent
+  } catch (err) {
+    console.error('Failed to delete shift:', err);
+    alert(
+      err instanceof Error
+        ? err.message
+        : 'Failed to delete shift'
+    );
+  }
+};
+
 
   if (error) {
     return (
@@ -116,12 +141,14 @@ export default function ShiftList({ onRefresh, lastRefresh, onAssignClick }: Shi
                     <Users className="h-5 w-5" />
                   </button>
                   <button
+                    onClick={() => setEditingShift(shift)}
                     className="text-gray-600 hover:text-gray-900"
                     title="Edit shift"
                   >
                     <Edit2 className="h-5 w-5" />
                   </button>
                   <button
+                    onClick={() => handleDeleteShift(shift)}
                     className="text-red-600 hover:text-red-900"
                     title="Delete shift"
                   >
@@ -145,6 +172,19 @@ export default function ShiftList({ onRefresh, lastRefresh, onAssignClick }: Shi
           onSettingsUpdated={onRefresh}
         />
       )}
+
+      {editingShift && (
+  <EditShiftModal
+    isOpen={!!editingShift}
+    shift={editingShift}
+    onClose={() => setEditingShift(null)}
+    onShiftUpdated={() => {
+      fetchShifts();
+      onRefresh();
+    }}
+  />
+)}
+
     </div>
   );
 }

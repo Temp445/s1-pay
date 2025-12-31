@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAttendanceStore } from '../../../stores/attendanceStore';
 import { identifyFace, initFaceRecognition } from '../../../lib/faceRecognition';
 import { supabase } from '../../../lib/supabase';
-import { Camera, ScanFace, AlertTriangle, CheckCircle, UserX, ShieldAlert } from 'lucide-react';
+import { Camera, ScanFace, AlertTriangle, CheckCircle, UserX } from 'lucide-react';
 import { handleUnverifiedVisitor } from '../../../lib/visitorFaceCapture';
 import { syncAttendanceLog } from '../../../lib/attendanceUtils';
 
@@ -18,8 +18,10 @@ type FeedbackMessage =
   | 'Looking for face...'
   | 'Too close! Move back.'
   | 'Too far! Come closer.'
-  | '⚠️ Security: Photo/Screen Not Accepted'
-  | 'Face not recognized (Visitor)'
+  | 'Please Blink & Turn Head'
+  | 'Verification Failed: No Blink'
+  | 'Verification Failed: No Head Turn'
+  | 'Face not recognized'
   | 'Success!';
 
 type TimingStatus = 'OK' | 'OUTSIDE_SHIFT' | 'NO_SHIFT_ASSIGNED';
@@ -35,10 +37,12 @@ export default function FaceAttendancePage() {
   const lockedEmployeeRef = useRef<string | null>(null);
   const faceLostCounterRef = useRef(0);
   
+  // Logic refs
   const unverifiedFacePresentRef = useRef(false);
   const lastUnverifiedDescriptorRef = useRef<number[] | null>(null);
   const isProcessingRef = useRef(false);
 
+  // State
   const [status, setStatus] = useState<Status>('IDLE');
   const [feedback, setFeedback] = useState<FeedbackMessage>('Looking for face...');
   const [verifiedEmployee, setVerifiedEmployee] = useState<{ id: string; name: string } | null>(null);
@@ -47,6 +51,7 @@ export default function FaceAttendancePage() {
     initFaceRecognition().catch(console.error);
     startCamera();
     
+    // Cleanup
     return () => {
         if (videoRef.current && videoRef.current.srcObject) {
             const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
@@ -63,8 +68,7 @@ export default function FaceAttendancePage() {
         await videoRef.current.play();
         recognizeLoop();
     } catch (err) {
-        setFeedback('Camera Error: Permission Denied' as any);
-        setStatus('ERROR');
+        setFeedback('Camera Error: Permission Denied');
     }
   };
 
@@ -75,6 +79,7 @@ export default function FaceAttendancePage() {
         return;
     }
 
+    // If we have already verified someone recently, pause briefly then reset
     if (lockedEmployeeRef.current) {
         requestAnimationFrame(recognizeLoop);
         return;
@@ -82,9 +87,11 @@ export default function FaceAttendancePage() {
 
     try {
       isProcessingRef.current = true;
+      
+      // 1. CALL BACKEND IDENTIFY (Includes Liveness & Geometry Checks)
       const result = await identifyFace(videoRef.current);
 
-      /* --- NO FACE --- */
+      /* --- CASE: NO FACE --- */
       if (result.reason === 'NO_FACE_DETECTED') {
         faceLostCounterRef.current++;
         if (faceLostCounterRef.current > FACE_LOST_THRESHOLD) {
@@ -94,11 +101,11 @@ export default function FaceAttendancePage() {
         setStatus('IDLE');
       } 
       
-      /* --- DISTANCE CHECKS --- */
+      /* --- CASE: GEOMETRY WARNINGS --- */
       else if (result.reason === 'TOO_CLOSE') {
         faceLostCounterRef.current = 0;
         setFeedback('Too close! Move back.');
-        setStatus('ERROR'); // Red Border
+        setStatus('ERROR');
       } 
       else if (result.reason === 'TOO_FAR') {
         faceLostCounterRef.current = 0;
@@ -106,30 +113,36 @@ export default function FaceAttendancePage() {
         setStatus('ERROR');
       }
 
-      /* --- SPOOF / PHOTO DETECTED --- */
-      // Use logical OR to catch both failure modes
-      else if (result.reason === 'SPOOF_PHOTO_DETECTED' || result.reason === 'SPOOF_STATIC_DETECTED') {
+      /* --- CASE: LIVENESS FAILURES --- */
+      else if (result.reason === 'NO_BLINK_DETECTED') {
         faceLostCounterRef.current = 0;
-        // Explicit message for the user
-        setFeedback('⚠️ Security: Photo/Screen Not Accepted');
+        setFeedback('Verification Failed: No Blink');
         setStatus('ERROR');
-        
-        // Pause to let user read the warning
-        await new Promise(r => setTimeout(r, 2000));
+        // Give user a moment to read, then retry
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      else if (result.reason === 'NO_HEAD_MOVEMENT') {
+        faceLostCounterRef.current = 0;
+        setFeedback('Verification Failed: No Head Turn');
+        setStatus('ERROR');
+        await new Promise(r => setTimeout(r, 1500));
       }
 
-      /* --- VISITOR --- */
+      /* --- CASE: LIVENESS PASSED, BUT UNKNOWN FACE (VISITOR) --- */
       else if (result.reason === 'UNVERIFIED_FACE') {
         faceLostCounterRef.current = 0;
-        setFeedback('Face not recognized (Visitor)');
+        setFeedback('Face not recognized');
+        
+        // Handle visitor capture
         await handleVisitorLogic(result.descriptor);
       }
 
-      /* --- SUCCESS --- */
+      /* --- CASE: SUCCESS --- */
       else if (result.matched && result.employeeId) {
         faceLostCounterRef.current = 0;
         lockedEmployeeRef.current = result.employeeId;
         
+        // Fetch Name
         const { data } = await supabase
           .from('employees')
           .select('name')
@@ -139,6 +152,11 @@ export default function FaceAttendancePage() {
         const empName = data?.name || 'Employee';
         handleSuccess({ id: result.employeeId, name: empName });
       }
+
+      // If we are actively checking liveness (internal logic inside identifyFace takes time),
+      // we might want to show a generic "Checking..." message. 
+      // Since identifyFace awaits, we update status *before* calling if we want advanced UI,
+      // but here we react to the return values.
 
     } catch (err) {
       console.error(err);
@@ -157,6 +175,7 @@ export default function FaceAttendancePage() {
   };
 
   const handleVisitorLogic = async (descriptor: any) => {
+      // Logic from your previous snippet
       try {
         const res = await handleUnverifiedVisitor({
           video: videoRef.current!,
@@ -165,14 +184,15 @@ export default function FaceAttendancePage() {
         });
         if (res.success) {
             setStatus('VISITOR_CAPTURED');
-            setFeedback('Face not recognized (Visitor)'); // Keep message generic
-            await new Promise(r => setTimeout(r, 2000));
+            setFeedback('Visitor captured successfully');
+            await new Promise(r => setTimeout(r, 2000)); // Show success message
             resetState();
         }
       } catch (e) { console.error(e); }
   };
 
   /* ---------------- SUCCESS LOGIC ---------------- */
+  // (Your existing logic for Attendance Logging)
   const handleSuccess = async (employee: { id: string; name: string }) => {
     setVerifiedEmployee(employee);
     setFeedback('Success!');
@@ -182,8 +202,10 @@ export default function FaceAttendancePage() {
         const today = new Date().toISOString().split('T')[0];
         const now = new Date();
 
+        // 1. Prefetch records
         await fetchAttendanceRecords(employee.id, today, today);
 
+        // 2. Determine Shift
         const { data: shifts } = await supabase
             .from('shift_assignments')
             .select(`shift_id, shifts(start_time, end_time)`)
@@ -204,25 +226,27 @@ export default function FaceAttendancePage() {
             }
         }
 
+        // 3. Log Timestamp
         const lastEntry = await getLastEntry(employee.id, shiftId);
         const nextEntry = lastEntry === 'IN' ? 'OUT' : 'IN';
 
         await storeAttendanceTimestamp(employee.id, shiftId, nextEntry, timingStatus);
         await syncAttendanceLog(employee.id);
 
+        // 4. Hold success screen for 3 seconds then reset
         await new Promise(r => setTimeout(r, 3000));
         resetState();
 
     } catch (err) {
         console.error(err);
-        setFeedback('Error logging attendance' as any);
+        setFeedback('Error logging attendance');
         setStatus('ERROR');
         await new Promise(r => setTimeout(r, 2000));
         resetState();
     }
   };
 
-  /* --- Helpers --- */
+  // --- Helpers (Same as your original) ---
   const isOutsideShift = (start: string, end: string, now: Date) => {
     const [sh, sm] = start.split(':').map(Number);
     const [eh, em] = end.split(':').map(Number);
@@ -248,20 +272,20 @@ export default function FaceAttendancePage() {
   };
 
   /* ---------------- UI RENDER ---------------- */
+  // Helper to determine border color
   const getBorderColor = () => {
     switch(status) {
         case 'VERIFIED': return 'border-green-500 shadow-green-200';
         case 'VISITOR_CAPTURED': return 'border-yellow-400 shadow-yellow-200';
-        case 'ERROR': return 'border-red-500 shadow-red-200'; // Red for Too Close & Spoof
+        case 'ERROR': return 'border-red-500 shadow-red-200';
         case 'CHECKING_LIVENESS': return 'border-blue-500 animate-pulse';
         default: return 'border-gray-200';
     }
   };
 
+  // Helper for status icon
   const StatusIcon = () => {
     if (status === 'VERIFIED') return <CheckCircle className="w-12 h-12 text-green-500 mb-2" />;
-    // Show Alert Shield for Security errors
-    if (feedback.includes('Security') || feedback.includes('Photo')) return <ShieldAlert className="w-12 h-12 text-red-600 mb-2 animate-pulse" />;
     if (status === 'ERROR') return <AlertTriangle className="w-12 h-12 text-red-500 mb-2" />;
     if (status === 'VISITOR_CAPTURED') return <UserX className="w-12 h-12 text-yellow-500 mb-2" />;
     return null;
@@ -271,11 +295,13 @@ export default function FaceAttendancePage() {
     <div className="flex flex-col items-center justify-center min-h-[80vh] p-4">
       <div className="w-full max-w-md bg-white rounded-[2rem] shadow-2xl overflow-hidden transform transition-all">
         
+        {/* Header */}
         <div className="bg-gray-50 p-6 text-center border-b border-gray-100">
             <h2 className="text-2xl font-bold text-gray-800">Face Attendance</h2>
             <p className="text-sm text-gray-500 mt-1">Please stand still and look at the camera</p>
         </div>
 
+        {/* Camera Section */}
         <div className="p-8 flex flex-col items-center">
             <div className={`relative w-64 h-64 rounded-full overflow-hidden border-[6px] transition-all duration-300 shadow-xl ${getBorderColor()}`}>
                 <video
@@ -283,9 +309,10 @@ export default function FaceAttendancePage() {
                     autoPlay
                     muted
                     playsInline
-                    className="w-full h-full object-cover transform scale-110"
+                    className="w-full h-full object-cover transform scale-110" // Slight zoom to fill circle
                 />
                 
+                {/* Overlay for Idle State */}
                 {status === 'IDLE' && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/10 backdrop-blur-[1px]">
                          <ScanFace className="w-16 h-16 text-white/80 animate-pulse" />
@@ -294,6 +321,7 @@ export default function FaceAttendancePage() {
             </div>
         </div>
 
+        {/* Feedback Section */}
         <div className="px-6 pb-8 min-h-[140px] flex flex-col items-center justify-center text-center">
             <StatusIcon />
             
@@ -304,10 +332,10 @@ export default function FaceAttendancePage() {
                 {verifiedEmployee ? verifiedEmployee.name : feedback}
             </h3>
 
-            {/* Instruction for valid users */}
+            {/* Sub-instruction for Liveness */}
             {status === 'IDLE' && feedback !== 'Looking for face...' && (
                 <p className="text-gray-500 text-sm mt-2 animate-bounce">
-                    👁️ Blink eyes • ↔️ Turn head slightly
+                    {feedback === 'Please Blink & Turn Head' ? '👁️ Blink eyes • ↔️ Turn head slightly' : ''}
                 </p>
             )}
             

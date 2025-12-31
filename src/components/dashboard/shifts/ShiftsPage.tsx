@@ -1,28 +1,43 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Filter, Upload } from 'lucide-react';
-import { format, startOfWeek, endOfWeek } from 'date-fns';
+import { format, startOfWeek, endOfWeek, isSameDay, parseISO } from 'date-fns';
+
 import ShiftCalendar from './ShiftCalendar';
 import ShiftFilter from './ShiftFilter';
 import ShiftAssignment from './ShiftAssignment';
-import EmployeeAvailability from './EmployeeAvailability';
 import CreateShiftModal from './CreateShiftModal';
 import AssignShiftModal from './AssignShiftModal';
 import ShiftList from './ShiftList';
 import ImportModal from '../../ImportModal';
-import { ShiftAssignment as ShiftAssignmentType, Shift, useShiftsStore } from '../../../stores/shiftsStore';
-import { importShifts } from '../../../lib/import';
+
+import {
+  ShiftAssignment as ShiftAssignmentType,
+  Shift,
+  useShiftsStore,
+} from '../../../stores/shiftsStore';
 import { useEmployeesStore } from '../../../stores/employeesStore';
+import { importShifts } from '../../../lib/import';
 
 export default function ShiftsPage() {
-  const { fetchShifts, fetchShiftAssignments } = useShiftsStore();
+  const { fetchShifts, assignments } = useShiftsStore();
   const { items: employees, fetchEmployees } = useEmployeesStore();
+
+  /* -------------------- UI STATE -------------------- */
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [selectedShift, setSelectedShift] = useState<ShiftAssignmentType | null>(null);
-  const [selectedShiftForAssignment, setSelectedShiftForAssignment] = useState<Shift | null>(null);
+
+  const [selectedShift, setSelectedShift] =
+    useState<ShiftAssignmentType | null>(null);
+
+  const [selectedShiftForAssignment, setSelectedShiftForAssignment] =
+    useState<Shift | null>(null);
+
+  const [focusedDate, setFocusedDate] = useState<Date | null>(null);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
+
+  /* -------------------- FILTERS -------------------- */
   const [filters, setFilters] = useState({
     startDate: format(startOfWeek(new Date()), 'yyyy-MM-dd'),
     endDate: format(endOfWeek(new Date()), 'yyyy-MM-dd'),
@@ -30,36 +45,34 @@ export default function ShiftsPage() {
     status: '',
   });
 
-  const [focusedDate, setFocusedDate] = useState<Date | null>(null);
-
-
+  /* -------------------- INITIAL LOAD -------------------- */
   useEffect(() => {
     fetchEmployees();
     fetchShifts();
-  }, [fetchEmployees, fetchShifts]);
+  }, [fetchEmployees, fetchShifts, lastRefresh]);
 
-  const availableEmployees = employees.filter(emp => emp.status === 'Active');
+  /* -------------------- DERIVED DATA -------------------- */
+  const availableEmployees = useMemo(
+    () => employees.filter(e => e.status === 'Active'),
+    [employees]
+  );
 
+  const shiftsForFocusedDate = useMemo(() => {
+    if (!focusedDate) return [];
+
+    return assignments.items.filter(s =>
+      isSameDay(parseISO(s.schedule_date), focusedDate)
+    );
+  }, [focusedDate, assignments.items]);
+
+  /* -------------------- HANDLERS -------------------- */
   const handleShiftClick = (shift: ShiftAssignmentType) => {
     setSelectedShift(shift);
     setFocusedDate(new Date(shift.schedule_date));
-
   };
 
   const handleAssignmentUpdate = () => {
     setSelectedShift(null);
-    setLastRefresh(Date.now());
-  };
-
-  const handleShiftCreated = () => {
-    setLastRefresh(Date.now());
-  };
-
-  const handleImport = async (data: any[]) => {
-    return await importShifts(data);
-  };
-
-  const handleImportComplete = () => {
     setLastRefresh(Date.now());
   };
 
@@ -68,15 +81,20 @@ export default function ShiftsPage() {
     setIsAssignModalOpen(true);
   };
 
-  const handleAssignmentComplete = () => {
-    setIsAssignModalOpen(false);
-    setSelectedShiftForAssignment(null);
+  const handleImport = async (rows: any[]) => {
+    await importShifts(rows);
+  };
+
+  const handleImportComplete = () => {
+    setIsImportModalOpen(false);
     setLastRefresh(Date.now());
   };
 
+  /* -------------------- RENDER -------------------- */
   return (
     <div className="py-6">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+        {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">Shift Management</h1>
@@ -109,6 +127,7 @@ export default function ShiftsPage() {
           </div>
         </div>
 
+        {/* FILTERS */}
         {isFiltersOpen && (
           <div className="mt-4">
             <ShiftFilter
@@ -118,60 +137,64 @@ export default function ShiftsPage() {
           </div>
         )}
 
+        {/* LIST */}
         <div className="mt-4">
           <ShiftList
-            onRefresh={handleShiftCreated}
             lastRefresh={lastRefresh}
+            onRefresh={() => setLastRefresh(Date.now())}
             onAssignClick={handleAssignClick}
           />
         </div>
 
+        {/* CALENDAR + ASSIGNMENTS */}
         <div
-  className={`mt-8 grid gap-4 transition-all duration-300 ${
-    selectedShift || focusedDate ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'
-  }`}
->
-  <div className={selectedShift || focusedDate ? 'lg:col-span-2' : 'lg:col-span-3'}>
-    <ShiftCalendar
-      onShiftClick={handleShiftClick}
-      selectedDate={new Date(filters.startDate)}
-      focusedDate={focusedDate}
-      onClearFocus={() => {
-        setFocusedDate(null);
-        setSelectedShift(null);
-      }}
-    />
-  </div>
+          className={`mt-8 grid gap-4 ${
+            selectedShift || focusedDate
+              ? 'grid-cols-1 lg:grid-cols-3'
+              : 'grid-cols-1'
+          }`}
+        >
+          <div className="lg:col-span-2">
+            <ShiftCalendar
+              onShiftClick={handleShiftClick}
+              focusedDate={focusedDate}
+              onClearFocus={() => {
+                setFocusedDate(null);
+                setSelectedShift(null);
+              }}
+            />
+          </div>
 
-  {(selectedShift || focusedDate) && (
-    <div className="transition-all duration-300 space-y-4">
-      {selectedShift ? (
-        <ShiftAssignment
-          shift={selectedShift}
-          availableEmployees={availableEmployees}
-          onAssignmentUpdate={handleAssignmentUpdate}
-        />
-      ) : (
-        // Show all shifts for the focused date
-        shiftsForFocusedDate.map(shift => (
-          <ShiftAssignment
-            key={shift.shift_id}
-            shift={shift}
-            availableEmployees={availableEmployees}
-            onAssignmentUpdate={handleAssignmentUpdate}
-          />
-        ))
-      )}
-    </div>
-  )}
-</div>
-
+          {(selectedShift || focusedDate) && (
+            <div className="space-y-4">
+              {selectedShift ? (
+                <ShiftAssignment
+                  shift={selectedShift}
+                  assignments={assignments.items}
+                  availableEmployees={availableEmployees}
+                  onAssignmentUpdate={handleAssignmentUpdate}
+                />
+              ) : (
+                shiftsForFocusedDate.map(shift => (
+                  <ShiftAssignment
+                    key={shift.id}
+                    shift={shift}
+                    assignments={assignments.items}
+                    availableEmployees={availableEmployees}
+                    onAssignmentUpdate={handleAssignmentUpdate}
+                  />
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* MODALS */}
       <CreateShiftModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onShiftCreated={handleShiftCreated}
+        onShiftCreated={() => setLastRefresh(Date.now())}
       />
 
       {selectedShiftForAssignment && (
@@ -182,16 +205,17 @@ export default function ShiftsPage() {
             setIsAssignModalOpen(false);
             setSelectedShiftForAssignment(null);
           }}
-          onAssignmentComplete={handleAssignmentComplete}
+          onAssignmentComplete={() => {
+            setIsAssignModalOpen(false);
+            setSelectedShiftForAssignment(null);
+            setLastRefresh(Date.now());
+          }}
         />
       )}
 
       <ImportModal
         isOpen={isImportModalOpen}
-        onClose={() => {
-          setIsImportModalOpen(false);
-          handleImportComplete();
-        }}
+        onClose={handleImportComplete}
         entityType="shifts"
         entityName="Shifts"
         onImport={handleImport}
